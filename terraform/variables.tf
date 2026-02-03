@@ -57,3 +57,27 @@ variable "allowed_ssh_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "deploy_cross_az" {
+  description = "Deploy source and destination in different availability zones"
+  type        = bool
+  default     = false
+}
+
+variable "simulate_latency" {
+  description = "Enable network latency simulation on destination (requires tc/netem)"
+  type        = bool
+  default     = false
+}
+
+variable "latency_ms" {
+  description = "Simulated latency in milliseconds (e.g., 100 for 100ms RTT)"
+  type        = number
+  default     = 100
+}
+
+variable "bandwidth_limit_mbps" {
+  description = "Bandwidth limit in Mbps for simulation (0 = unlimited)"
+  type        = number
+  default     = 0
+}

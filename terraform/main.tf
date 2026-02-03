@@ -45,7 +45,21 @@ resource "aws_subnet" "benchmark_subnet" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-subnet"
+    Name = "${var.project_name}-subnet-az1"
+    AZ   = data.aws_availability_zones.available.names[0]
+  }
+}
+
+resource "aws_subnet" "benchmark_subnet_az2" {
+  count                   = var.deploy_cross_az ? 1 : 0
+  vpc_id                  = aws_vpc.benchmark_vpc.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project_name}-subnet-az2"
+    AZ   = data.aws_availability_zones.available.names[1]
   }
 }
 
@@ -64,6 +78,12 @@ resource "aws_route_table" "benchmark_rt" {
 
 resource "aws_route_table_association" "benchmark_rta" {
   subnet_id      = aws_subnet.benchmark_subnet.id
+  route_table_id = aws_route_table.benchmark_rt.id
+}
+
+resource "aws_route_table_association" "benchmark_rta_az2" {
+  count          = var.deploy_cross_az ? 1 : 0
+  subnet_id      = aws_subnet.benchmark_subnet_az2[0].id
   route_table_id = aws_route_table.benchmark_rt.id
 }
 
@@ -184,6 +204,7 @@ resource "aws_instance" "source" {
   tags = {
     Name = "${var.project_name}-source"
     Role = "source"
+    AZ   = data.aws_availability_zones.available.names[0]
   }
 
   depends_on = [aws_instance.destination]
@@ -192,7 +213,7 @@ resource "aws_instance" "source" {
 resource "aws_instance" "destination" {
   ami                    = data.aws_ami.amazon_linux_2023.id
   instance_type          = var.destination_instance_type
-  subnet_id              = aws_subnet.benchmark_subnet.id
+  subnet_id              = var.deploy_cross_az ? aws_subnet.benchmark_subnet_az2[0].id : aws_subnet.benchmark_subnet.id
   vpc_security_group_ids = [aws_security_group.benchmark_sg.id]
   key_name               = aws_key_pair.benchmark_key.key_name
   iam_instance_profile   = aws_iam_instance_profile.benchmark_profile.name
@@ -203,11 +224,16 @@ resource "aws_instance" "destination" {
     iops        = 3000
   }
 
-  user_data = file("${path.module}/scripts/setup-destination.sh")
+  user_data = templatefile("${path.module}/scripts/setup-destination.sh", {
+    simulate_latency     = var.simulate_latency
+    latency_ms           = var.latency_ms
+    bandwidth_limit_mbps = var.bandwidth_limit_mbps
+  })
 
   tags = {
     Name = "${var.project_name}-destination"
     Role = "destination"
+    AZ   = var.deploy_cross_az ? data.aws_availability_zones.available.names[1] : data.aws_availability_zones.available.names[0]
   }
 }
 
@@ -258,4 +284,29 @@ output "ssh_command_source" {
 output "ssh_command_destination" {
   description = "SSH command to connect to destination"
   value       = "ssh -i ${var.private_key_path} ec2-user@${aws_instance.destination.public_ip}"
+}
+
+output "cross_az_deployed" {
+  description = "Whether instances are deployed in different AZs"
+  value       = var.deploy_cross_az
+}
+
+output "source_az" {
+  description = "Availability zone of source instance"
+  value       = data.aws_availability_zones.available.names[0]
+}
+
+output "destination_az" {
+  description = "Availability zone of destination instance"
+  value       = var.deploy_cross_az ? data.aws_availability_zones.available.names[1] : data.aws_availability_zones.available.names[0]
+}
+
+output "latency_simulation_enabled" {
+  description = "Whether latency simulation is enabled"
+  value       = var.simulate_latency
+}
+
+output "simulated_latency_ms" {
+  description = "Simulated latency in milliseconds"
+  value       = var.simulate_latency ? var.latency_ms : 0
 }

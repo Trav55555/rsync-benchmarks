@@ -1,13 +1,15 @@
 # Rsync Benchmarks
 
-AWS infrastructure and automation for benchmarking file transfer tools (rsync, tar+ssh, aria2c, etc.) with real performance data.
+AWS infrastructure and automation for benchmarking file transfer tools (rsync, tar+ssh, aria2c, rclone, etc.) with real performance data.
 
 ## Overview
 
 This repository provides:
 - **Terraform infrastructure** for AWS EC2 instances (source + destination)
 - **Automated benchmark scripts** for various transfer scenarios
-- **Data collection** to S3 with analysis tools
+- **Realistic test data** (compressible, incompressible, mixed workloads)
+- **Statistical rigor** (multiple runs, warm-up, stddev calculation)
+- **Data collection** to S3 with comprehensive analysis tools
 - **Cost estimates** and optimization guidance
 
 ## Quick Start
@@ -74,30 +76,75 @@ Or run everything in one command:
 
 ## Benchmarks
 
-### Test Scenarios
+### Test Data Types
 
-1. **Small Files** (100K × 4KB = ~400MB)
-   - Metadata overhead dominates
-   - Tests: rsync variants, tar+ssh with different compression
+1. **Incompressible Data** (random binary)
+   - Worst case for compression algorithms
+   - Tests raw throughput
 
-2. **Large Files** (10GB single file)
-   - Throughput dominates
-   - Tests: rsync with/without resume, multi-connection tools
+2. **Compressible Data** (repetitive text, logs)
+   - Best case for compression
+   - Tests compression efficiency
 
-3. **Parallelization** (1×, 2×, 4×, 8×, 16×)
-   - Tests overhead of parallel streams
-   - Measures diminishing returns
+3. **Source Code** (Python-like files)
+   - Realistic code repository simulation
+   - Tests delta algorithm effectiveness
 
-4. **Mixed Workload**
-   - Combination of large and small files
+4. **Large Files** (1-10GB, varying compressibility)
+   - Single file throughput
+   - Resume capability testing
+
+5. **Mixed Realistic Workload**
+   - Database-like JSON files
+   - Log files (highly compressible)
+   - Binary assets (incompressible)
+   - Source code tree
    - Tests real-world scenarios
 
-### Tools Tested
+6. **Metadata Test Files**
+   - ACLs, extended attributes
+   - Symlinks and hard links
+   - Sparse files
+   - Tests metadata preservation
 
-- `rsync` (various flags: -a, -az, --partial, --checksum, --delete)
-- `tar + ssh` (plain, gzip, zstd, lz4)
-- Parallel rsync variants (fpsync, parsyncfp2)
-- `aria2c` (multi-connection)
+### Benchmark Types
+
+1. **Main Benchmark Suite** (`benchmark-runner.sh`)
+   - Multiple runs (default: 3) with warm-up
+   - Statistical analysis (mean, stddev, CV%)
+   - CPU/memory profiling
+   - Throughput calculation
+   - Tools: rsync, tar+ssh variants
+
+2. **Resume/Partial Transfer Tests** (`benchmark-resume.sh`)
+   - Interrupts transfer after 5 seconds
+   - Measures resume time
+   - Tests `--partial` and `--append-verify`
+
+3. **Parallel Transfer Tests** (`benchmark-parallel.sh`)
+   - Tests 1×, 2×, 4×, 8× parallel streams
+   - Shards data across multiple rsync processes
+   - Includes fpsync testing
+   - Calculates speedup and efficiency
+
+4. **Additional Tools** (`benchmark-tools.sh`)
+   - aria2c (multi-connection HTTP)
+   - rclone (cloud-optimized)
+   - Tests tools mentioned in blog post
+
+### Statistical Rigor
+
+- **Warm-up runs**: 1 run before measurement (excluded from stats)
+- **Multiple iterations**: Default 3 runs per configuration
+- **Metrics collected**:
+  - Duration (mean ± stddev)
+  - Coefficient of variation (CV%)
+  - User/system CPU time
+  - Memory usage (max RSS)
+  - Context switches
+  - I/O wait
+  - Throughput (Mbps)
+- **Cache management**: Dropped between runs for consistency
 
 ## Cost
 
@@ -113,10 +160,11 @@ rsync-benchmarks/
 │   ├── main.tf              # Infrastructure definition
 │   ├── variables.tf         # Configurable variables
 │   └── scripts/
-│       ├── setup-source.sh      # Source instance setup
+│       ├── setup-source.sh      # Source instance setup + benchmark scripts
 │       └── setup-destination.sh # Destination instance setup
 ├── scripts/
-│   └── analyze-results.py   # Results analysis
+│   ├── analyze-results.py   # Results analysis with statistics
+│   └── estimate-costs.py    # Live AWS pricing queries
 ├── run-benchmarks.sh        # Main orchestration script
 ├── COST_ESTIMATE.md         # Detailed cost breakdown
 └── README.md               # This file
@@ -153,15 +201,24 @@ allowed_ssh_cidr        = "YOUR_IP/32"  # Restrict for security
 
 ## Results Format
 
-Benchmark results are saved as JSON:
+Benchmark results include detailed statistics:
 
 ```json
 {
   "benchmark": "rsync_default",
-  "command": "rsync -a /benchmark/data/...",
-  "duration_seconds": 45.23,
+  "runs": 3,
+  "duration_seconds": {
+    "mean": 45.23,
+    "stdev": 2.14,
+    "min": 42.89,
+    "max": 47.56,
+    "cv_percent": 4.7
+  },
   "bytes_transferred": 419430400,
-  "exit_code": 0,
+  "throughput_mbps": 74.2,
+  "user_time_seconds": "12.34",
+  "system_time_seconds": "8.91",
+  "max_rss_kb": 45632,
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
@@ -169,10 +226,12 @@ Benchmark results are saved as JSON:
 ## Analysis Output
 
 The analysis script generates:
-- Summary tables for each benchmark type
-- Comparison tables formatted for blog posts
-- Relative speed comparisons
+- Summary tables with mean ± stddev
+- Coefficient of variation (CV%) for consistency
 - Throughput calculations
+- Parallel scaling analysis (speedup, efficiency)
+- Resume test results
+- Blog-ready comparison tables
 
 ## Troubleshooting
 

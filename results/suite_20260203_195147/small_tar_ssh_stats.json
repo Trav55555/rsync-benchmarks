@@ -1,0 +1,21 @@
+{
+  "benchmark": "small_tar_ssh",
+  "data_profile": "small",
+  "valid_runs": 5,
+  "total_runs": 5,
+  "duration_s": {
+    "median": 6.106,
+    "mean": 6.11,
+    "trimmed_mean": 6.111,
+    "stdev": 0.031,
+    "min": 6.072,
+    "max": 6.143,
+    "cv_pct": 0.5
+  },
+  "effective_throughput_mbps": {
+    "median": 54.09,
+    "trimmed_mean": 54.05
+  },
+  "src_bytes": 41287680,
+  "all_verified": true
+}

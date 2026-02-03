@@ -1,0 +1,11 @@
+{
+  "benchmark": "small_rsync_default",
+  "run": 3,
+  "exit_code": 0,
+  "duration_s": 6.217,
+  "src_bytes": 41287680,
+  "dst_bytes": 41320448,
+  "verified": true,
+  "max_rss_kb": 7708,
+  "effective_throughput_mbps": 53.13
+}

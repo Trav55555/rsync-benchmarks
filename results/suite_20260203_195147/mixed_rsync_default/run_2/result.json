@@ -1,0 +1,11 @@
+{
+  "benchmark": "mixed_rsync_default",
+  "run": 2,
+  "exit_code": 0,
+  "duration_s": 3.455,
+  "src_bytes": 340738362,
+  "dst_bytes": 340771130,
+  "verified": true,
+  "max_rss_kb": 7692,
+  "effective_throughput_mbps": 788.97
+}

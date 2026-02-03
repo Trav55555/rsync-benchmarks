@@ -1,0 +1,104 @@
+{
+  "network_ceiling_mbps": 4967.4,
+  "benchmarks": [
+    {
+      "name": "mixed_parallel_4x",
+      "profile": "mixed",
+      "median_s": 1.917,
+      "stdev_s": 0.371,
+      "cv_pct": 17.9,
+      "throughput_mbps": 1421.96,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": 4
+    },
+    {
+      "name": "mixed_parallel_2x",
+      "profile": "mixed",
+      "median_s": 1.998,
+      "stdev_s": 0.324,
+      "cv_pct": 14.7,
+      "throughput_mbps": 1364.32,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": 2
+    },
+    {
+      "name": "mixed_rsync_compress",
+      "profile": "mixed",
+      "median_s": 2.422,
+      "stdev_s": 0.501,
+      "cv_pct": 19.3,
+      "throughput_mbps": 1125.48,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "mixed_rsync_default",
+      "profile": "mixed",
+      "median_s": 2.458,
+      "stdev_s": 0.515,
+      "cv_pct": 19.9,
+      "throughput_mbps": 1108.99,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "mixed_tar_ssh",
+      "profile": "mixed",
+      "median_s": 2.513,
+      "stdev_s": 0.994,
+      "cv_pct": 35.0,
+      "throughput_mbps": 1084.72,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "mixed_tar_zstd_ssh",
+      "profile": "mixed",
+      "median_s": 2.516,
+      "stdev_s": 0.832,
+      "cv_pct": 30.3,
+      "throughput_mbps": 1083.43,
+      "src_bytes": 340738362,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "small_tar_zstd_ssh",
+      "profile": "small",
+      "median_s": 6.07,
+      "stdev_s": 0.097,
+      "cv_pct": 1.6,
+      "throughput_mbps": 54.42,
+      "src_bytes": 41287680,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "small_tar_ssh",
+      "profile": "small",
+      "median_s": 6.106,
+      "stdev_s": 0.031,
+      "cv_pct": 0.5,
+      "throughput_mbps": 54.09,
+      "src_bytes": 41287680,
+      "verified": true,
+      "streams": null
+    },
+    {
+      "name": "small_rsync_default",
+      "profile": "small",
+      "median_s": 6.217,
+      "stdev_s": 0.398,
+      "cv_pct": 6.6,
+      "throughput_mbps": 53.13,
+      "src_bytes": 41287680,
+      "verified": true,
+      "streams": null
+    }
+  ]
+}

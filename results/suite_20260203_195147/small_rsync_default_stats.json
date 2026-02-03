@@ -1,0 +1,21 @@
+{
+  "benchmark": "small_rsync_default",
+  "data_profile": "small",
+  "valid_runs": 5,
+  "total_runs": 5,
+  "duration_s": {
+    "median": 6.217,
+    "mean": 6.042,
+    "trimmed_mean": 6.211,
+    "stdev": 0.398,
+    "min": 5.33,
+    "max": 6.246,
+    "cv_pct": 6.6
+  },
+  "effective_throughput_mbps": {
+    "median": 53.13,
+    "trimmed_mean": 53.18
+  },
+  "src_bytes": 41287680,
+  "all_verified": true
+}

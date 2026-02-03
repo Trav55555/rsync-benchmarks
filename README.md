@@ -1,294 +1,141 @@
 # Rsync Benchmarks
 
-AWS infrastructure and automation for benchmarking file transfer tools (rsync, tar+ssh, aria2c, rclone, etc.) with real performance data.
+Controlled benchmarks comparing file transfer tools on AWS EC2. Produced data for the [Rsync or Rswim](../blogs/rsync-or-rswim/) blog post.
 
-## Overview
+## Results (2026-02-03)
 
-This repository provides:
-- **Terraform infrastructure** for AWS EC2 instances (source + destination)
-- **Automated benchmark scripts** for various transfer scenarios
-- **Realistic test data** (compressible, incompressible, mixed workloads)
-- **Statistical rigor** (multiple runs, warm-up, stddev calculation)
-- **Data collection** to S3 with comprehensive analysis tools
-- **Cross-AZ deployment** for testing real-world network latency
-- **Latency simulation** (tc/netem) for testing high-RTT scenarios
-- **Cost estimates** and optimization guidance
+**Environment:** 2× c6i.2xlarge (8 vCPU, 15 GB RAM), same-AZ us-east-1a, xfs on gp3, rsync 3.4.0.
+**Network ceiling:** 4,967 Mbps (iperf3, median of 3 runs).
+**Methodology:** 5 runs per test, bilateral cache drops, fresh destination per run, no warm-up, transfer verification. Medians reported.
 
-## Quick Start
+### Mixed workload (325 MB)
 
-```bash
-# 1. Clone and setup
-git clone <repo-url>
-cd rsync-benchmarks
-./run-benchmarks.sh setup
+JSON records, logs, source code, binary assets.
 
-# 2. Configure (optional)
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# Edit terraform.tfvars to customize instance types, SSH keys, etc.
+| Tool | Median | Throughput | vs fastest |
+|------|-------:|----------:|-----------:|
+| `rsync -az` | 2.42s | 1.13 Gbps | — |
+| `rsync -a` | 2.46s | 1.11 Gbps | 1.01× slower |
+| `tar \| ssh` | 2.51s | 1.08 Gbps | 1.04× slower |
+| `tar \| zstd \| ssh` | 2.52s | 1.08 Gbps | 1.04× slower |
+| parallel rsync (2×) | 2.00s | 1.36 Gbps | 1.21× faster |
+| parallel rsync (4×) | 1.92s | 1.42 Gbps | 1.26× faster |
 
-# 3. Deploy infrastructure
-./run-benchmarks.sh deploy
+### Small files (10,000 × 4 KB, 39 MB)
 
-# 4. Run benchmarks
-./run-benchmarks.sh run
+Random binary data, worst case for compression.
 
-# 5. Collect results
-./run-benchmarks.sh collect
+| Tool | Median | Throughput |
+|------|-------:|----------:|
+| `tar \| zstd \| ssh` | 6.07s | 54.4 Mbps |
+| `tar \| ssh` | 6.11s | 54.1 Mbps |
+| `rsync -a` | 6.22s | 53.1 Mbps |
 
-# 6. Analyze
-./run-benchmarks.sh analyze
+### Key findings
 
-# 7. Clean up
-./run-benchmarks.sh destroy
-```
+1. **On fast networks, tool choice barely matters for bulk data.** All single-stream methods within 4%. Bottleneck is single-core SSH encryption at ~22% of 5 Gbps.
+2. **Compression is a wash at high bandwidth.** `rsync -az` = `rsync -a` when the network is faster than zstd.
+3. **Parallel rsync gives real speedup.** 4 streams → 1.28× by distributing SSH encryption across cores. Diminishing returns beyond 4.
+4. **Small files are the real killer.** 54 Mbps on 5 Gbps = 1% utilization. Per-file metadata overhead dominates. Tar helps marginally (150 ms); the problem is architectural.
 
-Or run everything in one command:
-```bash
-./run-benchmarks.sh full
-```
+## Methodology
 
-## Infrastructure
+The benchmark runner (`scripts/rigorous-bench.sh`) addresses common pitfalls in transfer benchmarks:
 
-### Architecture
+| Issue | Fix |
+|-------|-----|
+| Destination warm from prior run | Fresh `rm -rf && mkdir` before every run |
+| Source-only cache drops | Bilateral: `echo 3 > /proc/sys/vm/drop_caches` on both machines |
+| Warm-up run populates destination | No warm-up (unnecessary for I/O-bound workloads) |
+| Inconsistent SSH overhead | SSH ControlMaster for connection multiplexing |
+| No network baseline | iperf3 ceiling measurement before benchmarks |
+| Unverified transfers | `du -sb` comparison after each run, 1% tolerance |
+| bc output produces invalid JSON | All math via Python `json.dumps()` |
+| 3 runs too few for outlier detection | 5 runs, report median + trimmed mean |
 
-```
-┌─────────────────┐         ┌─────────────────┐
-│  Source EC2     │────────▶│ Destination EC2 │
-│  (c6i.2xlarge)  │  SSH    │  (c6i.2xlarge)  │
-│                 │         │                 │
-│  Test data      │         │  Receives data  │
-│  Benchmarks     │         │  Metrics        │
-└────────┬────────┘         └────────┬────────┘
-         │                           │
-         └───────────┬───────────────┘
-                     │
-              ┌──────▼──────┐
-              │  S3 Bucket  │
-              │  Results    │
-              └─────────────┘
-```
-
-### Resources Created
-
-- **2× EC2 instances** (c6i.2xlarge by default) with gp3 SSD storage
-- **VPC with public subnet** and Internet Gateway
-- **Security group** allowing SSH and inter-instance traffic
-- **IAM role** for S3 access
-- **S3 bucket** for benchmark results
-
-### Cross-AZ Deployment
-
-Deploy instances in different availability zones to test real-world network conditions:
-
-```bash
-./run-benchmarks.sh deploy-cross-az
-```
-
-This adds ~1-2ms of real network latency between instances, simulating production scenarios where source and destination are in different AZs.
-
-### Latency Simulation
-
-Test how tools perform under high-latency conditions (e.g., cross-region transfers):
-
-```bash
-# Deploy with 100ms simulated latency
-./run-benchmarks.sh latency-test 100
-
-# Deploy with 200ms simulated latency
-./run-benchmarks.sh latency-test 200
-```
-
-Uses Linux tc/netem to simulate network latency on the destination instance. This is useful for testing:
-- How rsync performs over high-RTT links
-- Whether parallel transfers help with latency
-- TCP window scaling behavior
-
-## Benchmarks
-
-### Test Data Types
-
-1. **Incompressible Data** (random binary)
-   - Worst case for compression algorithms
-   - Tests raw throughput
-
-2. **Compressible Data** (repetitive text, logs)
-   - Best case for compression
-   - Tests compression efficiency
-
-3. **Source Code** (Python-like files)
-   - Realistic code repository simulation
-   - Tests delta algorithm effectiveness
-
-4. **Large Files** (1-10GB, varying compressibility)
-   - Single file throughput
-   - Resume capability testing
-
-5. **Mixed Realistic Workload**
-   - Database-like JSON files
-   - Log files (highly compressible)
-   - Binary assets (incompressible)
-   - Source code tree
-   - Tests real-world scenarios
-
-6. **Metadata Test Files**
-   - ACLs, extended attributes
-   - Symlinks and hard links
-   - Sparse files
-   - Tests metadata preservation
-
-### Benchmark Types
-
-1. **Main Benchmark Suite** (`benchmark-runner.sh`)
-   - Multiple runs (default: 3) with warm-up
-   - Statistical analysis (mean, stddev, CV%)
-   - CPU/memory profiling
-   - Throughput calculation
-   - Tools: rsync, tar+ssh variants
-
-2. **Resume/Partial Transfer Tests** (`benchmark-resume.sh`)
-   - Interrupts transfer after 5 seconds
-   - Measures resume time
-   - Tests `--partial` and `--append-verify`
-
-3. **Parallel Transfer Tests** (`benchmark-parallel.sh`)
-   - Tests 1×, 2×, 4×, 8× parallel streams
-   - Shards data across multiple rsync processes
-   - Includes fpsync testing
-   - Calculates speedup and efficiency
-
-4. **Additional Tools** (`benchmark-tools.sh`)
-   - aria2c (multi-connection HTTP)
-   - rclone (cloud-optimized)
-   - Tests tools mentioned in blog post
-
-### Statistical Rigor
-
-- **Warm-up runs**: 1 run before measurement (excluded from stats)
-- **Multiple iterations**: Default 3 runs per configuration
-- **Metrics collected**:
-  - Duration (mean ± stddev)
-  - Coefficient of variation (CV%)
-  - User/system CPU time
-  - Memory usage (max RSS)
-  - Context switches
-  - I/O wait
-  - Throughput (Mbps)
-- **Cache management**: Dropped between runs for consistency
-
-## Cost
-
-**Estimated cost per benchmark run: $1-3 (on-demand) or $0.50-1 (spot)**
-
-See [COST_ESTIMATE.md](COST_ESTIMATE.md) for detailed breakdown.
-
-## Repository Structure
+## Repository structure
 
 ```
 rsync-benchmarks/
-├── terraform/
-│   ├── main.tf              # Infrastructure definition
-│   ├── variables.tf         # Configurable variables
-│   └── scripts/
-│       ├── setup-source.sh      # Source instance setup + benchmark scripts
-│       └── setup-destination.sh # Destination instance setup
 ├── scripts/
-│   ├── analyze-results.py   # Results analysis with statistics
-│   └── estimate-costs.py    # Live AWS pricing queries
-├── run-benchmarks.sh        # Main orchestration script
-├── COST_ESTIMATE.md         # Detailed cost breakdown
-└── README.md               # This file
+│   ├── rigorous-bench.sh      # Main benchmark runner (v2, rigorous)
+│   └── analyze-results.py     # Results analysis + blog-ready tables
+├── terraform/
+│   ├── main.tf                # 2× EC2, VPC, S3, IAM
+│   ├── variables.tf
+│   └── scripts/
+│       ├── setup-source.sh    # Source instance provisioning
+│       └── setup-destination.sh
+├── results/
+│   ├── suite_20260203_195147/ # Raw JSON results (per-run + stats)
+│   ├── chart_mixed_throughput.png
+│   ├── chart_small_files.png
+│   └── chart_variance.png
+├── run-benchmarks.sh          # Orchestration wrapper
+└── COST_ESTIMATE.md
 ```
 
-## Requirements
+## Running
 
-- AWS CLI configured with credentials
-- Terraform >= 1.0
-- Python 3.8+
-- SSH key pair (default: ~/.ssh/id_rsa)
+```bash
+# 1. Deploy infrastructure
+cd terraform
+AWS_PROFILE=your-profile terraform apply
 
-## Configuration
+# 2. Fix destination permissions (setup runs as root, transfers run as ec2-user)
+ssh ec2-user@<dest_ip> "sudo chown -R ec2-user:ec2-user /benchmark"
 
-Edit `terraform/terraform.tfvars`:
+# 3. Copy benchmark script to source
+scp scripts/rigorous-bench.sh ec2-user@<source_ip>:/benchmark/scripts/
 
-```hcl
-aws_region              = "us-east-1"
-source_instance_type    = "c6i.2xlarge"  # 8 vCPU, 16 GB
-destination_instance_type = "c6i.2xlarge"
-source_volume_size      = 100  # GB
-destination_volume_size = 100  # GB
-public_key_path         = "~/.ssh/id_rsa.pub"
-private_key_path        = "~/.ssh/id_rsa"
-allowed_ssh_cidr        = "YOUR_IP/32"  # Restrict for security
+# 4. Run (as root for cache drops, ~5 min)
+ssh ec2-user@<source_ip> "sudo /benchmark/scripts/rigorous-bench.sh <dest_private_ip>"
 
-# Cross-AZ and latency simulation options
-deploy_cross_az         = false  # Deploy instances in different AZs
-simulate_latency        = false  # Enable latency simulation
-latency_ms              = 100    # Simulated latency in milliseconds
-bandwidth_limit_mbps    = 0      # Bandwidth limit (0 = unlimited)
+# 5. Collect results
+scp -r ec2-user@<source_ip>:/benchmark/results/suite_*/ results/
+
+# 6. Analyze
+python3 scripts/analyze-results.py results/suite_*/
+
+# 7. Destroy (instances cost ~$0.68/hr combined)
+AWS_PROFILE=your-profile terraform destroy
 ```
 
-## Security Notes
+## Results format
 
-- **Restrict SSH access** to your IP only (not 0.0.0.0/0)
-- **Use dedicated SSH keys** for benchmark instances
-- **Terminate resources** immediately after use
-- **S3 bucket** is private by default with versioning enabled
-
-## Results Format
-
-Benchmark results include detailed statistics:
+Each benchmark produces per-run JSON and aggregate stats:
 
 ```json
 {
-  "benchmark": "rsync_default",
-  "runs": 3,
-  "duration_seconds": {
-    "mean": 45.23,
-    "stdev": 2.14,
-    "min": 42.89,
-    "max": 47.56,
-    "cv_percent": 4.7
+  "benchmark": "mixed_rsync_default",
+  "data_profile": "mixed",
+  "valid_runs": 5,
+  "total_runs": 5,
+  "duration_s": {
+    "median": 2.458,
+    "mean": 2.586,
+    "trimmed_mean": 2.461,
+    "stdev": 0.515,
+    "min": 2.095,
+    "max": 3.455,
+    "cv_pct": 19.9
   },
-  "bytes_transferred": 419430400,
-  "throughput_mbps": 74.2,
-  "user_time_seconds": "12.34",
-  "system_time_seconds": "8.91",
-  "max_rss_kb": 45632,
-  "timestamp": "2025-01-15T10:30:00Z"
+  "effective_throughput_mbps": {
+    "median": 1108.99,
+    "trimmed_mean": 1108.85
+  },
+  "src_bytes": 340853565,
+  "all_verified": true
 }
 ```
 
-## Analysis Output
+## Cost
 
-The analysis script generates:
-- Summary tables with mean ± stddev
-- Coefficient of variation (CV%) for consistency
-- Throughput calculations
-- Parallel scaling analysis (speedup, efficiency)
-- Resume test results
-- Blog-ready comparison tables
+~$1.50 per full run (2× c6i.2xlarge on-demand for ~1 hour including setup). Destroy immediately after.
 
-## Troubleshooting
+## Requirements
 
-**SSH connection refused:**
-- Wait 1-2 minutes after deploy for instances to boot
-- Check security group allows your IP
-
-**Benchmarks fail:**
-- Verify destination instance is running
-- Check `/var/log/cloud-init-output.log` on instances
-
-**High costs:**
-- Use Spot instances (edit variables.tf)
-- Reduce instance size for testing (t3.large)
-- Terminate immediately after use
-
-## Contributing
-
-Add new benchmarks by editing:
-- `terraform/scripts/setup-source.sh` - add test scenarios
-- `scripts/analyze-results.py` - add analysis functions
-
-## License
-
-MIT
+- AWS CLI with admin credentials (SSO or IAM)
+- Terraform >= 1.0
+- Python 3.8+ (matplotlib for charts)
+- SSH key pair at `~/.ssh/id_rsa`

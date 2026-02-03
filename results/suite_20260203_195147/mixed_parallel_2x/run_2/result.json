@@ -1,0 +1,11 @@
+{
+  "benchmark": "mixed_parallel_2x",
+  "run": 2,
+  "streams": 2,
+  "exit_code": 0,
+  "duration_s": 1.956,
+  "src_bytes": 340738362,
+  "dst_bytes": 340771130,
+  "verified": true,
+  "effective_throughput_mbps": 1393.61
+}

@@ -1,0 +1,22 @@
+{
+  "benchmark": "mixed_parallel_4x",
+  "data_profile": "mixed",
+  "streams": 4,
+  "valid_runs": 5,
+  "total_runs": 5,
+  "duration_s": {
+    "median": 1.917,
+    "mean": 2.071,
+    "trimmed_mean": 1.912,
+    "stdev": 0.371,
+    "min": 1.887,
+    "max": 2.734,
+    "cv_pct": 17.9
+  },
+  "effective_throughput_mbps": {
+    "median": 1421.96,
+    "trimmed_mean": 1425.71
+  },
+  "src_bytes": 340738362,
+  "all_verified": true
+}

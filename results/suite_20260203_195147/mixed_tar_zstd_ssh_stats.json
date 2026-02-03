@@ -1,0 +1,21 @@
+{
+  "benchmark": "mixed_tar_zstd_ssh",
+  "data_profile": "mixed",
+  "valid_runs": 5,
+  "total_runs": 5,
+  "duration_s": {
+    "median": 2.516,
+    "mean": 2.748,
+    "trimmed_mean": 2.496,
+    "stdev": 0.832,
+    "min": 2.056,
+    "max": 4.195,
+    "cv_pct": 30.3
+  },
+  "effective_throughput_mbps": {
+    "median": 1083.43,
+    "trimmed_mean": 1092.39
+  },
+  "src_bytes": 340738362,
+  "all_verified": true
+}

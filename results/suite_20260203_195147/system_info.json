@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-02-03T19:51:48+00:00",
+  "hostname": "ip-10-0-1-244.ec2.internal",
+  "kernel": "6.1.159-182.297.amzn2023.x86_64",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+  "cpu_cores": 8,
+  "memory_gb": 15,
+  "filesystem": "xfs",
+  "rsync_version": "rsync  version 3.4.0  protocol version 32",
+  "tar_version": "tar (GNU tar) 1.34"
+}

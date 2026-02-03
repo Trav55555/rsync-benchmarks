@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+yum update -y
+yum install -y python3 python3-pip
+
+pip3 install awscli
+
+aws s3 cp s3://${bucket}/scripts/setup-destination.sh /tmp/setup-destination.sh
+chmod +x /tmp/setup-destination.sh
+/tmp/setup-destination.sh

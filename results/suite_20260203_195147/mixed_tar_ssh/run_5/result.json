@@ -1,0 +1,11 @@
+{
+  "benchmark": "mixed_tar_ssh",
+  "run": 5,
+  "exit_code": 0,
+  "duration_s": 2.513,
+  "src_bytes": 340738362,
+  "dst_bytes": 340738362,
+  "verified": true,
+  "max_rss_kb": 7664,
+  "effective_throughput_mbps": 1084.72
+}

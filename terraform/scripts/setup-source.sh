@@ -1,11 +1,49 @@
 #!/bin/bash
 set -e
 
-yum update -y
+if [ -f /etc/benchmark/destination_ip ]; then
+    DEST_IP=$(cat /etc/benchmark/destination_ip)
+fi
 
-yum install -y rsync aria2 fpart parallel bc python3 python3-pip lz4 zstd iperf3 sysstat attr
+dnf update -y
 
-pip3 install awscli
+# Core packages (AL2023 repos)
+dnf install -y rsync bc python3 python3-pip lz4 zstd iperf3 sysstat attr tar gzip || true
+
+# aria2 - install from source if not in repos
+if ! command -v aria2c &> /dev/null; then
+    dnf install -y gcc gcc-c++ make openssl-devel libxml2-devel zlib-devel c-ares-devel || true
+    cd /tmp
+    curl -L -o aria2.tar.gz https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.gz 2>/dev/null
+    if [ -f aria2.tar.gz ]; then
+        tar xzf aria2.tar.gz && cd aria2-1.37.0
+        ./configure --prefix=/usr/local && make -j$(nproc) && make install || echo "aria2 build failed, skipping"
+        cd /tmp && rm -rf aria2*
+    fi
+fi
+
+# fpart - install from source if not in repos
+if ! command -v fpart &> /dev/null; then
+    dnf install -y autoconf automake gcc make || true
+    cd /tmp
+    git clone https://github.com/martymac/fpart.git 2>/dev/null
+    if [ -d fpart ]; then
+        cd fpart && autoreconf -i && ./configure --prefix=/usr/local && make -j$(nproc) && make install || echo "fpart build failed, skipping"
+        cd /tmp && rm -rf fpart
+    fi
+fi
+
+# parallel
+if ! command -v parallel &> /dev/null; then
+    dnf install -y parallel 2>/dev/null || {
+        cd /tmp
+        curl -L -o parallel.tar.bz2 https://ftp.gnu.org/gnu/parallel/parallel-latest.tar.bz2 2>/dev/null
+        if [ -f parallel.tar.bz2 ]; then
+            tar xjf parallel.tar.bz2 && cd parallel-* && ./configure && make && make install || echo "parallel build failed, skipping"
+            cd /tmp && rm -rf parallel*
+        fi
+    }
+fi
 
 mkdir -p /benchmark/data /benchmark/results /benchmark/scripts
 
@@ -438,7 +476,7 @@ run_single_benchmark() {
     stop_metrics_collection "$metrics_pid_file"
     
     # Calculate duration
-    local duration=$(echo "$end_time - $start_time" | bc)
+    local duration=$(echo "$end_time - $start_time" | bc | sed 's/^\./0./')
     
     # Parse time stats
     local user_time=$(grep "User time" "$run_dir/time_stats.txt" | sed 's/.*: //')
@@ -457,7 +495,7 @@ run_single_benchmark() {
   "system_time_seconds": "$sys_time",
   "max_rss_kb": ${max_rss:-0},
   "voluntary_context_switches": ${vol_ctx:-0},
-  "involuntary_context_switches": ${inv_ctx:-0},
+  "involuntary_context_switches": ${invol_ctx:-0},
   "timestamp": "$(date -Iseconds)",
   "command": "$cmd"
 }

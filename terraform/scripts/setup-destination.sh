@@ -1,37 +1,39 @@
 #!/bin/bash
 set -e
 
-yum update -y
+dnf update -y
 
-yum install -y rsync aria2 fpart parallel bc python3 python3-pip lz4 zstd iproute-tc
-
-pip3 install awscli
+dnf install -y rsync bc python3 python3-pip lz4 zstd iproute-tc || true
 
 mkdir -p /benchmark/receive /benchmark/results /benchmark/scripts
 
-SIMULATE_LATENCY=${simulate_latency}
-LATENCY_MS=${latency_ms}
-BANDWIDTH_LIMIT=${bandwidth_limit_mbps}
+SIMULATE_LATENCY="${SIMULATE_LATENCY:-false}"
+LATENCY_MS="${LATENCY_MS:-0}"
+BANDWIDTH_LIMIT="${BANDWIDTH_LIMIT:-0}"
+
+if [ -f /etc/benchmark/latency-config ]; then
+    . /etc/benchmark/latency-config
+fi
 
 setup_latency_simulation() {
     if [ "$SIMULATE_LATENCY" = "true" ] || [ "$SIMULATE_LATENCY" = "True" ]; then
         echo "Setting up network latency simulation..."
         echo "  Latency: ${LATENCY_MS}ms"
-        
+
         IFACE=$(ip route | grep default | awk '{print $5}' | head -1)
         tc qdisc add dev $IFACE root netem delay ${LATENCY_MS}ms 10ms distribution normal
-        
+
         if [ "$BANDWIDTH_LIMIT" -gt 0 ]; then
             echo "  Bandwidth limit: ${BANDWIDTH_LIMIT}Mbps"
             tc qdisc add dev $IFACE root netem delay ${LATENCY_MS}ms rate ${BANDWIDTH_LIMIT}mbit
         fi
-        
+
         echo "Latency simulation active on interface $IFACE"
         tc qdisc show dev $IFACE
     fi
 }
 
-cat > /benchmark/scripts/collect-metrics.sh << 'EOF'
+cat > /benchmark/scripts/collect-metrics.sh << 'INNEREOF'
 #!/bin/bash
 
 INTERVAL="${1:-1}"
@@ -44,26 +46,26 @@ end_time=$(($(date +%s) + DURATION))
 
 while [ $(date +%s) -lt $end_time ]; do
     timestamp=$(date +%s)
-    
+
     cpu=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
     mem=$(free | grep Mem | awk '{printf "%.1f", $3/$2 * 100.0}')
-    
+
     disk_stats=$(cat /proc/diskstats | grep "nvme0n1 " | head -1)
     disk_read=$(echo "$disk_stats" | awk '{print $6 * 512 / 1024 / 1024}')
     disk_write=$(echo "$disk_stats" | awk '{print $10 * 512 / 1024 / 1024}')
-    
+
     net_rx=$(cat /sys/class/net/eth0/statistics/rx_bytes | awk '{print $1 / 1024 / 1024}')
     net_tx=$(cat /sys/class/net/eth0/statistics/tx_bytes | awk '{print $1 / 1024 / 1024}')
-    
+
     echo "$timestamp,$cpu,$mem,$disk_read,$disk_write,$net_rx,$net_tx" >> "$OUTPUT"
-    
+
     sleep $INTERVAL
 done
-EOF
+INNEREOF
 
 chmod +x /benchmark/scripts/collect-metrics.sh
 
-cat > /benchmark/scripts/verify-transfer.sh << 'EOF'
+cat > /benchmark/scripts/verify-transfer.sh << 'INNEREOF'
 #!/bin/bash
 
 SOURCE_DIR="$1"
@@ -111,11 +113,11 @@ mismatches=0
 for file in $sample_files; do
     rel_path="${file#$SOURCE_DIR/}"
     dest_file="$DEST_DIR/$rel_path"
-    
+
     if [ -f "$dest_file" ]; then
         source_md5=$(md5sum "$file" | cut -d' ' -f1)
         dest_md5=$(md5sum "$dest_file" | cut -d' ' -f1)
-        
+
         if [ "$source_md5" != "$dest_md5" ]; then
             echo "✗ Checksum mismatch: $rel_path"
             mismatches=$((mismatches + 1))
@@ -135,13 +137,12 @@ fi
 
 echo ""
 echo "Transfer verification complete!"
-EOF
+INNEREOF
 
 chmod +x /benchmark/scripts/verify-transfer.sh
 
-cat > /benchmark/scripts/latency-control.sh << 'EOF'
+cat > /benchmark/scripts/latency-control.sh << 'INNEREOF'
 #!/bin/bash
-# Control script for latency simulation
 
 IFACE=$(ip route | grep default | awk '{print $5}' | head -1)
 
@@ -169,12 +170,15 @@ case "$1" in
         exit 1
         ;;
 esac
-EOF
+INNEREOF
 
 chmod +x /benchmark/scripts/latency-control.sh
 
 if [ "$SIMULATE_LATENCY" = "true" ] || [ "$SIMULATE_LATENCY" = "True" ]; then
     setup_latency_simulation
 fi
+
+# Fix permissions so ec2-user can write (rsync/tar connect as ec2-user)
+chown -R ec2-user:ec2-user /benchmark
 
 echo "Destination setup complete. Ready to receive transfers."

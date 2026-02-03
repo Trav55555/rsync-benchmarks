@@ -167,6 +167,20 @@ resource "aws_s3_bucket" "results_bucket" {
   bucket = "${var.project_name}-results-${random_id.bucket_suffix.hex}"
 }
 
+resource "aws_s3_object" "setup_source_script" {
+  bucket       = aws_s3_bucket.results_bucket.bucket
+  key          = "scripts/setup-source.sh"
+  source       = "${path.module}/scripts/setup-source.sh"
+  content_type = "text/x-shellscript"
+}
+
+resource "aws_s3_object" "setup_destination_script" {
+  bucket       = aws_s3_bucket.results_bucket.bucket
+  key          = "scripts/setup-destination.sh"
+  source       = "${path.module}/scripts/setup-destination.sh"
+  content_type = "text/x-shellscript"
+}
+
 resource "aws_s3_bucket_versioning" "results_versioning" {
   bucket = aws_s3_bucket.results_bucket.id
   versioning_configuration {
@@ -197,8 +211,8 @@ resource "aws_instance" "source" {
     iops        = 3000
   }
 
-  user_data = templatefile("${path.module}/scripts/setup-source.sh", {
-    destination_ip = aws_instance.destination.private_ip
+  user_data = templatefile("${path.module}/templates/user_data_source.sh.tftpl", {
+    bucket = aws_s3_bucket.results_bucket.bucket
   })
 
   tags = {
@@ -207,7 +221,7 @@ resource "aws_instance" "source" {
     AZ   = data.aws_availability_zones.available.names[0]
   }
 
-  depends_on = [aws_instance.destination]
+  depends_on = [aws_instance.destination, aws_s3_object.setup_source_script]
 }
 
 resource "aws_instance" "destination" {
@@ -224,10 +238,8 @@ resource "aws_instance" "destination" {
     iops        = 3000
   }
 
-  user_data = templatefile("${path.module}/scripts/setup-destination.sh", {
-    simulate_latency     = var.simulate_latency
-    latency_ms           = var.latency_ms
-    bandwidth_limit_mbps = var.bandwidth_limit_mbps
+  user_data = templatefile("${path.module}/templates/user_data_destination.sh.tftpl", {
+    bucket = aws_s3_bucket.results_bucket.bucket
   })
 
   tags = {
@@ -235,6 +247,8 @@ resource "aws_instance" "destination" {
     Role = "destination"
     AZ   = var.deploy_cross_az ? data.aws_availability_zones.available.names[1] : data.aws_availability_zones.available.names[0]
   }
+
+  depends_on = [aws_s3_object.setup_destination_script]
 }
 
 data "aws_availability_zones" "available" {

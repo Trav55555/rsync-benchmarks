@@ -80,7 +80,7 @@ rsync-benchmarks/
 ```bash
 # 1. Deploy infrastructure
 cd terraform
-AWS_PROFILE=your-profile terraform apply
+AWS_PROFILE=your-profile terraform apply -var="allowed_ssh_cidr=$(curl -s ifconfig.me)/32"
 
 # 2. Fix destination permissions (setup runs as root, transfers run as ec2-user)
 ssh ec2-user@<dest_ip> "sudo chown -R ec2-user:ec2-user /benchmark"
@@ -98,7 +98,7 @@ scp -r ec2-user@<source_ip>:/benchmark/results/suite_*/ results/
 python3 scripts/analyze-results.py results/suite_*/
 
 # 7. Destroy (instances cost ~$0.68/hr combined)
-AWS_PROFILE=your-profile terraform destroy
+AWS_PROFILE=your-profile terraform destroy -var="allowed_ssh_cidr=0.0.0.0/32"
 ```
 
 ## Results format

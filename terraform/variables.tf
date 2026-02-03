@@ -53,9 +53,13 @@ variable "private_key_path" {
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR block allowed for SSH access (restrict to your IP for security)"
+  description = "CIDR block allowed for SSH access (e.g. \"203.0.113.5/32\" for your IP)"
   type        = string
-  default     = "0.0.0.0/0"
+
+  validation {
+    condition     = var.allowed_ssh_cidr != "0.0.0.0/0"
+    error_message = "allowed_ssh_cidr must not be 0.0.0.0/0. Set it to your IP, e.g. \"$(curl -s ifconfig.me)/32\"."
+  }
 }
 
 variable "deploy_cross_az" {

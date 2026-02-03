@@ -203,7 +203,7 @@ resource "aws_instance" "destination" {
     iops        = 3000
   }
 
-  user_data = templatefile("${path.module}/scripts/setup-destination.sh", {})
+  user_data = file("${path.module}/scripts/setup-destination.sh")
 
   tags = {
     Name = "${var.project_name}-destination"

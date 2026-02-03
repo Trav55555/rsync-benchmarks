@@ -51,7 +51,7 @@ import json, subprocess, os
 
 def cmd(c):
     try: return subprocess.check_output(c, shell=True, text=True).strip()
-    except: return "unknown"
+    except Exception: return "unknown"
 
 info = {
     "timestamp": cmd("date -Iseconds"),
@@ -97,7 +97,7 @@ for i in range(1, 4):
         try:
             d = json.load(open(f))
             bws.append(d["end"]["sum_sent"]["bits_per_second"] / 1e6)
-        except: pass
+        except (KeyError, ValueError, json.JSONDecodeError): pass
 
 if bws:
     result = {"median_mbps": round(statistics.median(bws), 2), "runs": len(bws)}

@@ -10,6 +10,8 @@ This repository provides:
 - **Realistic test data** (compressible, incompressible, mixed workloads)
 - **Statistical rigor** (multiple runs, warm-up, stddev calculation)
 - **Data collection** to S3 with comprehensive analysis tools
+- **Cross-AZ deployment** for testing real-world network latency
+- **Latency simulation** (tc/netem) for testing high-RTT scenarios
 - **Cost estimates** and optimization guidance
 
 ## Quick Start
@@ -73,6 +75,33 @@ Or run everything in one command:
 - **Security group** allowing SSH and inter-instance traffic
 - **IAM role** for S3 access
 - **S3 bucket** for benchmark results
+
+### Cross-AZ Deployment
+
+Deploy instances in different availability zones to test real-world network conditions:
+
+```bash
+./run-benchmarks.sh deploy-cross-az
+```
+
+This adds ~1-2ms of real network latency between instances, simulating production scenarios where source and destination are in different AZs.
+
+### Latency Simulation
+
+Test how tools perform under high-latency conditions (e.g., cross-region transfers):
+
+```bash
+# Deploy with 100ms simulated latency
+./run-benchmarks.sh latency-test 100
+
+# Deploy with 200ms simulated latency
+./run-benchmarks.sh latency-test 200
+```
+
+Uses Linux tc/netem to simulate network latency on the destination instance. This is useful for testing:
+- How rsync performs over high-RTT links
+- Whether parallel transfers help with latency
+- TCP window scaling behavior
 
 ## Benchmarks
 
@@ -190,6 +219,12 @@ destination_volume_size = 100  # GB
 public_key_path         = "~/.ssh/id_rsa.pub"
 private_key_path        = "~/.ssh/id_rsa"
 allowed_ssh_cidr        = "YOUR_IP/32"  # Restrict for security
+
+# Cross-AZ and latency simulation options
+deploy_cross_az         = false  # Deploy instances in different AZs
+simulate_latency        = false  # Enable latency simulation
+latency_ms              = 100    # Simulated latency in milliseconds
+bandwidth_limit_mbps    = 0      # Bandwidth limit (0 = unlimited)
 ```
 
 ## Security Notes

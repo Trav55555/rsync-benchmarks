@@ -940,38 +940,6 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-run_tool_benchmark() {
-    local name=$1
-    local cmd=$2
-    
-    log "Benchmarking: $name"
-    
-    local start_time=$(date +%s.%N)
-    
-    if eval "$cmd"; then
-        local end_time=$(date +%s.%N)
-        local duration=$(echo "$end_time - $start_time" | bc)
-        
-        local bytes_total=$(du -sb "$TEST_DIR" | cut -f1)
-        local throughput_mbps=$(echo "scale=2; ($bytes_total * 8) / ($duration * 1000000)" | bc)
-        
-        log "  Duration: ${duration}s"
-        log "  Throughput: ${throughput_mbps} Mbps"
-        
-        cat > "$RESULTS_DIR/tool_${name}.json" << TOOLEOF
-{
-  "benchmark": "$name",
-  "duration_seconds": $duration,
-  "bytes_transferred": $bytes_total,
-  "throughput_mbps": $throughput_mbps,
-  "timestamp": "$(date -Iseconds)"
-}
-TOOLEOF
-    else
-        log "  FAILED"
-    fi
-}
-
 # Test aria2c if available
 test_aria2c() {
     if ! command -v aria2c &> /dev/null; then

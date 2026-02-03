@@ -3,11 +3,33 @@ set -e
 
 yum update -y
 
-yum install -y rsync aria2 fpart parallel bc python3 python3-pip lz4 zstd
+yum install -y rsync aria2 fpart parallel bc python3 python3-pip lz4 zstd iproute-tc
 
 pip3 install awscli
 
 mkdir -p /benchmark/receive /benchmark/results /benchmark/scripts
+
+SIMULATE_LATENCY=${simulate_latency}
+LATENCY_MS=${latency_ms}
+BANDWIDTH_LIMIT=${bandwidth_limit_mbps}
+
+setup_latency_simulation() {
+    if [ "$SIMULATE_LATENCY" = "true" ] || [ "$SIMULATE_LATENCY" = "True" ]; then
+        echo "Setting up network latency simulation..."
+        echo "  Latency: ${LATENCY_MS}ms"
+        
+        IFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+        tc qdisc add dev $IFACE root netem delay ${LATENCY_MS}ms 10ms distribution normal
+        
+        if [ "$BANDWIDTH_LIMIT" -gt 0 ]; then
+            echo "  Bandwidth limit: ${BANDWIDTH_LIMIT}Mbps"
+            tc qdisc add dev $IFACE root netem delay ${LATENCY_MS}ms rate ${BANDWIDTH_LIMIT}mbit
+        fi
+        
+        echo "Latency simulation active on interface $IFACE"
+        tc qdisc show dev $IFACE
+    fi
+}
 
 cat > /benchmark/scripts/collect-metrics.sh << 'EOF'
 #!/bin/bash
@@ -116,5 +138,43 @@ echo "Transfer verification complete!"
 EOF
 
 chmod +x /benchmark/scripts/verify-transfer.sh
+
+cat > /benchmark/scripts/latency-control.sh << 'EOF'
+#!/bin/bash
+# Control script for latency simulation
+
+IFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+
+case "$1" in
+    show)
+        echo "Current tc configuration on $IFACE:"
+        tc qdisc show dev $IFACE
+        ;;
+    add)
+        LATENCY="${2:-100}"
+        echo "Adding ${LATENCY}ms latency to $IFACE..."
+        tc qdisc add dev $IFACE root netem delay ${LATENCY}ms 10ms distribution normal
+        ;;
+    remove)
+        echo "Removing latency simulation from $IFACE..."
+        tc qdisc del dev $IFACE root 2>/dev/null || true
+        ;;
+    change)
+        LATENCY="${2:-100}"
+        echo "Changing latency to ${LATENCY}ms on $IFACE..."
+        tc qdisc change dev $IFACE root netem delay ${LATENCY}ms 10ms distribution normal
+        ;;
+    *)
+        echo "Usage: $0 {show|add <ms>|remove|change <ms>}"
+        exit 1
+        ;;
+esac
+EOF
+
+chmod +x /benchmark/scripts/latency-control.sh
+
+if [ "$SIMULATE_LATENCY" = "true" ] || [ "$SIMULATE_LATENCY" = "True" ]; then
+    setup_latency_simulation
+fi
 
 echo "Destination setup complete. Ready to receive transfers."
